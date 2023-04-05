@@ -1,6 +1,7 @@
 import os
 import sys
 import ast
+from urllib.parse import urlparse
 
 # The default website to use if the country link is not found
 DEFAULT_WEBSITE = 'https://www.odoo.com/documentation/master/applications/finance/fiscal_localizations.html'
@@ -28,24 +29,25 @@ COUNTRY_LINKS = {
 }
 
 def update_manifest(manifest_path, country_links):
-    """
-    Update the website in the manifest file at the given path.
 
-    If the website key is present and matches the corresponding country link, don't do anything.
-    Otherwise, replace the website with the corresponding country link.
-    If the website key is not present, add it with the corresponding country link.
-    """
-    with open(manifest_path, 'r') as f:
-        lines = f.readlines()
-
+    with open(manifest_path, 'r') as file:
+        lines = [line for i, line in enumerate(file)]
+    source = ''.join(lines[1:])
     try:
-        manifest = ast.literal_eval(''.join(lines))
+        tree = ast.literal_eval(source)
     except:
         print(f'Error parsing {manifest_path}. Skipping...')
         return
 
-    # Get the country code from the manifest path
     country_code = os.path.basename(os.path.dirname(manifest_path))
+
+    old_website = None
+    if country_code not in country_links:
+        country_links[country_code] = DEFAULT_WEBSITE
+    if 'website' in tree:
+        # check if old website doesn't contain odoo.com
+        if not urlparse(tree['website']).netloc.endswith('odoo.com'):
+            old_website = tree['website']
 
     if country_code not in country_links:
         # Use the default website
@@ -53,6 +55,9 @@ def update_manifest(manifest_path, country_links):
 
     # Check if 'website' key is present and replace it
     for i, line in enumerate(lines):
+        if old_website:
+            if 'author' in line:
+                lines[i] = f"    'author': '{tree['author']} ({old_website})',\n"
         if 'website' in line:
             lines[i] = f"    'website': '{country_links[country_code]}',\n"
             break
@@ -66,6 +71,7 @@ def update_manifest(manifest_path, country_links):
     # Write the updated manifest file
     with open(manifest_path, 'w') as f:
         f.writelines(lines)
+
 
 
 if __name__ == '__main__':
